@@ -53,11 +53,10 @@ async function main() {
     createReadStream(csvFilePath)
       .pipe(csv())
       .on('data', (row) => {
-        const startAt = row[CSV_KEYS.START_AT];
-        const stopAt = row[CSV_KEYS.STOP_AT];
+        const totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
 
         // Filter rows based on minimumDuration
-        if ((stopAt - startAt) >= minimumDuration) {
+        if (totalDuration >= minimumDuration) {
           rows.push(row);
         }
       })
