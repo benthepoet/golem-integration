@@ -4,6 +4,14 @@ import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import config from 'config';
 
+const CSV_KEYS = {
+  NODE_ID: 'key.1',
+  START_AT: 'value.0',
+  STOP_AT: 'value.1',
+  INVOICE_AMOUNT: 'value.2',
+  GPU_CLASS_ID: 'value.5'
+}
+
 async function main() {
   // Open the database
   const db = await open({
@@ -29,6 +37,7 @@ async function main() {
       node_id TEXT,
       order_index INTEGER,
       duration INTEGER,
+      invoice_amount REAL,
       FOREIGN KEY (node_plan_id) REFERENCES node_plan(id)
     )
   `);
@@ -44,8 +53,8 @@ async function main() {
     createReadStream(csvFilePath)
       .pipe(csv())
       .on('data', (row) => {
-        const startAt = row['value.0'];
-        const stopAt = row['value.1'];
+        const startAt = row[CSV_KEYS.START_AT];
+        const stopAt = row[CSV_KEYS.STOP_AT];
 
         // Filter rows based on minimumDuration
         if ((stopAt - startAt) >= minimumDuration) {
@@ -59,51 +68,84 @@ async function main() {
   // Bulk insert using a transaction
   await db.run('BEGIN TRANSACTION');
   try {
-    const insertPlan = await db.prepare('INSERT INTO node_plan (node_id, csv_file, start_at, stop_at, gpu_class_id) VALUES (?, ?, ?, ?, ?)');
-    const insertJob = await db.prepare('INSERT INTO node_plan_job (node_plan_id, node_id, order_index, duration) VALUES (?, ?, ?, ?)');
+    const insertPlan = await db.prepare(`
+      INSERT INTO node_plan (
+        node_id,
+        csv_file,
+        start_at,
+        stop_at,
+        gpu_class_id
+      ) VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `);
+
+    const insertJob = await db.prepare(`
+      INSERT INTO node_plan_job (
+        node_plan_id,
+        node_id,
+        order_index,
+        duration,
+        invoice_amount
+      ) VALUES (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?
+      )
+    `);
     
     for (const row of rows) {
       // Insert into node_plan and get the primary key (id)
       const result = await insertPlan.run(
-        row['key.1'],
+        row[CSV_KEYS.NODE_ID],
         csvFilePath,
-        row['value.0'],
-        row['value.1'],
-        row['value.5']
+        row[CSV_KEYS.START_AT],
+        row[CSV_KEYS.STOP_AT],
+        row[CSV_KEYS.GPU_CLASS_ID]
       );
 
       // Calculate total duration
-      let runningDuration = row['value.1'] - row['value.0'];
+      const totalInvoiceAmount = row[CSV_KEYS.INVOICE_AMOUNT];
+      let totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
+      let remainingDuration = totalDuration;
       let orderIndex = 0;
-
+      
       // Insert jobs based on duration constraints
       do {
         // Check if the remaining duration is less than the maximum allowed
-        if (runningDuration < maximumDuration ) {
+        if (remainingDuration < maximumDuration ) {
           // Only insert the remainder if it meets the minimum duration
-          if (runningDuration >= minimumDuration) {
+          if (remainingDuration >= minimumDuration) {
             await insertJob.run(
               result.lastID, 
-              row['key.1'],
+              row[CSV_KEYS.NODE_ID],
               orderIndex++,
-              runningDuration
+              remainingDuration,
+              (remainingDuration / totalDuration) * totalInvoiceAmount
             );
           }
 
-          runningDuration -= runningDuration;
+          remainingDuration -= remainingDuration;
         }
         // Else, insert a job with maximum duration
         else {
           await insertJob.run(
             result.lastID, 
-            row['key.1'],
+            row[CSV_KEYS.NODE_ID],
             orderIndex++,
-            maximumDuration
+            maximumDuration,
+            (maximumDuration / totalDuration) * totalInvoiceAmount
           );
 
-          runningDuration -= maximumDuration;
+          remainingDuration -= maximumDuration;
         }
-      } while (runningDuration > 0);
+      } while (remainingDuration > 0);
     }
     await insertPlan.finalize();
     await insertJob.finalize();
