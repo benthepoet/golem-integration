@@ -1,7 +1,8 @@
-import { createReadStream, readdirSync, renameSync } from 'fs';
+import { createReadStream, readdirSync, renameSync, existsSync, mkdirSync } from 'fs';
 import csv from 'csv-parser';
 import config from 'config';
 
+// CSV column keys
 const CSV_KEYS = {
   NODE_ID: 'key.1',
   START_AT: 'value.0',
@@ -16,7 +17,7 @@ const CSV_KEYS = {
  */
 async function importPlans(db) {
 
-  // Create tables
+  // Ensure tables exist
   await db.exec(`
     CREATE TABLE IF NOT EXISTS node_plan (
       id INTEGER PRIMARY KEY,
@@ -47,10 +48,17 @@ async function importPlans(db) {
   const pendingDir = 'data/pending';
   const importedDir = 'data/imported';
   const failedDir = 'data/failed';
+
+  // Ensure pending directory exists
+  if (!existsSync(pendingDir)) {
+    mkdirSync(pendingDir, { recursive: true });
+  }
+
+  // Read CSV files
   const files = readdirSync(pendingDir).filter(f => f.endsWith('.csv'));
-
   console.log(`Found ${files.length} CSV files to process.`);
-
+  
+  // Process each CSV file
   for (const csvFile of files) {
     console.log(`Processing file: ${csvFile}`);
 
