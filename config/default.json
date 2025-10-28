@@ -1,4 +1,5 @@
 {
-    "minimumDuration": 5,
-    "maximumDuration": 180
+    "minimumDuration": "5min",
+    "maximumDuration": "180min",
+    "timeLag": "24hr"
 }

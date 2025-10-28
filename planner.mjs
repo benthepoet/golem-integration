@@ -1,6 +1,7 @@
 import { createReadStream, readdirSync, renameSync, existsSync, mkdirSync } from 'fs';
 import csv from 'csv-parser';
 import config from 'config';
+import timespan from 'timespan-parser';
 
 // CSV column keys
 const CSV_KEYS = {
@@ -41,8 +42,9 @@ async function importPlans(db) {
   `);
 
   // Get minimum and maximum duration from config
-  const minimumDuration = config.get('minimumDuration') * 60 * 1000; // convert minutes to milliseconds
-  const maximumDuration = config.get('maximumDuration') * 60 * 1000; // convert minutes to milliseconds
+  const timespanParser = timespan({ unit: 'ms' });
+  const minimumDuration = timespanParser.parse(config.get('minimumDuration'));
+  const maximumDuration = timespanParser.parse(config.get('maximumDuration'));
 
   // Process all CSV files in the pending directory
   const pendingDir = 'data/pending';
@@ -54,10 +56,20 @@ async function importPlans(db) {
     mkdirSync(pendingDir, { recursive: true });
   }
 
+  // Ensure imported directory exists
+  if (!existsSync(importedDir)) {
+    mkdirSync(importedDir, { recursive: true });
+  }
+
+  // Ensure failed directory exists
+  if (!existsSync(failedDir)) {
+    mkdirSync(failedDir, { recursive: true });
+  }
+
   // Read CSV files
   const files = readdirSync(pendingDir).filter(f => f.endsWith('.csv'));
   console.log(`Found ${files.length} CSV files to process.`);
-  
+
   // Process each CSV file
   for (const csvFile of files) {
     console.log(`Processing file: ${csvFile}`);
@@ -145,7 +157,7 @@ async function importPlans(db) {
           do {
             // Calculate job duration
             const jobDuration = Math.min(remainingDuration, maximumDuration);
-            
+
             // Insert job if it meets minimum duration
             if (jobDuration >= minimumDuration) {
               await insertJob.run(
@@ -167,7 +179,7 @@ async function importPlans(db) {
         await insertJob.finalize();
         await db.run('COMMIT');
         console.log(`${csvFile} successfully processed and rows inserted efficiently`);
-        
+
         // Move file to imported/
         renameSync(csvFilePath, `${importedDir}/${csvFile}`);
       } catch (err) {
