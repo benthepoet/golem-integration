@@ -1,4 +1,4 @@
-import { createReadStream } from 'fs';
+import { createReadStream, readdirSync, renameSync } from 'fs';
 import csv from 'csv-parser';
 import config from 'config';
 
@@ -43,106 +43,137 @@ async function importPlans(db) {
   const minimumDuration = config.get('minimumDuration') * 60 * 1000; // convert minutes to milliseconds
   const maximumDuration = config.get('maximumDuration') * 60 * 1000; // convert minutes to milliseconds
 
-  // Read CSV and collect rows
-  const csvFilePath = 'data/20251025-20251026.csv';
-  const rows = [];
-  await new Promise((resolve, reject) => {
-    createReadStream(csvFilePath)
-      .pipe(csv())
-      .on('data', (row) => {
-        const totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
+  // Process all CSV files in the pending directory
+  const pendingDir = 'data/pending';
+  const importedDir = 'data/imported';
+  const failedDir = 'data/failed';
+  const files = readdirSync(pendingDir).filter(f => f.endsWith('.csv'));
 
-        // Filter rows based on minimumDuration
-        if (totalDuration >= minimumDuration) {
-          rows.push(row);
-        }
-      })
-      .on('end', resolve)
-      .on('error', reject);
-  });
+  console.log(`Found ${files.length} CSV files to process.`);
 
-  // Bulk insert using a transaction
-  await db.run('BEGIN TRANSACTION');
-  try {
-    const insertPlan = await db.prepare(`
-      INSERT INTO node_plan (
-        node_id,
-        csv_file,
-        start_at,
-        stop_at,
-        gpu_class_id
-      ) VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
-    `);
+  for (const csvFile of files) {
+    console.log(`Processing file: ${csvFile}`);
 
-    const insertJob = await db.prepare(`
-      INSERT INTO node_plan_job (
-        node_plan_id,
-        node_id,
-        order_index,
-        duration,
-        invoice_amount
-      ) VALUES (
-        ?,
-        ?,
-        ?,
-        ?,
-        ?
-      )
-    `);
-    
-    for (const row of rows) {
-      // Insert into node_plan and get the primary key (id)
-      const result = await insertPlan.run(
-        row[CSV_KEYS.NODE_ID],
-        csvFilePath,
-        row[CSV_KEYS.START_AT],
-        row[CSV_KEYS.STOP_AT],
-        row[CSV_KEYS.GPU_CLASS_ID]
-      );
+    const csvFilePath = `${pendingDir}/${csvFile}`;
+    const rows = [];
+    let importSuccess = true;
 
-      // Calculate total duration
-      const totalInvoiceAmount = row[CSV_KEYS.INVOICE_AMOUNT];
-      let totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
-      let remainingDuration = totalDuration;
-      let orderIndex = 0;
-      
-      // Insert jobs based on duration constraints
-      do {
-        // Determine job duration
-        const jobDuration = Math.min(remainingDuration, maximumDuration);
+    // Read CSV and collect rows
+    await new Promise((resolve, reject) => {
+      createReadStream(csvFilePath)
+        .pipe(csv())
+        .on('data', (row) => {
+          const totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
+          if (totalDuration >= minimumDuration) {
+            rows.push(row);
+          }
+        })
+        .on('end', resolve)
+        .on('error', (err) => {
+          importSuccess = false;
+          reject(err);
+        });
+    }).catch((err) => {
+      console.error(`Failed to read ${csvFile}:`, err);
+      importSuccess = false;
+    });
 
-        // Only insert the job if it meets the minimum duration
-        if (jobDuration >= minimumDuration) {
-          await insertJob.run(
-            result.lastID, 
+    if (importSuccess) {
+      await db.run('BEGIN TRANSACTION');
+
+      try {
+        // Prepare plan insert statement
+        const insertPlan = await db.prepare(`
+          INSERT INTO node_plan (
+            node_id,
+            csv_file,
+            start_at,
+            stop_at,
+            gpu_class_id
+          ) VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          )
+        `);
+
+        // Prepare job insert statement
+        const insertJob = await db.prepare(`
+          INSERT INTO node_plan_job (
+            node_plan_id,
+            node_id,
+            order_index,
+            duration,
+            invoice_amount
+          ) VALUES (
+            ?,
+            ?,
+            ?,
+            ?,
+            ?
+          )
+        `);
+
+        // Insert plans and jobs
+        for (const row of rows) {
+          // Insert plan
+          const result = await insertPlan.run(
             row[CSV_KEYS.NODE_ID],
-            orderIndex++,
-            jobDuration,
-            (jobDuration / totalDuration) * totalInvoiceAmount
+            csvFilePath,
+            row[CSV_KEYS.START_AT],
+            row[CSV_KEYS.STOP_AT],
+            row[CSV_KEYS.GPU_CLASS_ID]
           );
+
+          // Calculate job parameters
+          const totalInvoiceAmount = row[CSV_KEYS.INVOICE_AMOUNT];
+          let totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
+          let remainingDuration = totalDuration;
+          let orderIndex = 0;
+
+          // Split into jobs based on maximumDuration
+          do {
+            // Calculate job duration
+            const jobDuration = Math.min(remainingDuration, maximumDuration);
+            
+            // Insert job if it meets minimum duration
+            if (jobDuration >= minimumDuration) {
+              await insertJob.run(
+                result.lastID,
+                row[CSV_KEYS.NODE_ID],
+                orderIndex++,
+                jobDuration,
+                (jobDuration / totalDuration) * totalInvoiceAmount
+              );
+            }
+
+            // Decrease remaining duration
+            remainingDuration -= jobDuration;
+          } while (remainingDuration > 0);
         }
 
-        // Decrease remaining duration
-        remainingDuration -= jobDuration;
-      } while (remainingDuration > 0);
-    }
-    await insertPlan.finalize();
-    await insertJob.finalize();
-    await db.run('COMMIT');
-    console.log('CSV file successfully processed and rows inserted efficiently');
-  } catch (err) {
-    await db.run('ROLLBACK');
-    console.error('Error inserting rows:', err);
-  }
+        // Finalize statements and commit transaction
+        await insertPlan.finalize();
+        await insertJob.finalize();
+        await db.run('COMMIT');
+        console.log(`${csvFile} successfully processed and rows inserted efficiently`);
+        
+        // Move file to imported/
+        renameSync(csvFilePath, `${importedDir}/${csvFile}`);
+      } catch (err) {
+        await db.run('ROLLBACK');
+        console.error(`Error importing ${csvFile}:`, err);
 
-  // Do not close db here; let the caller manage db lifecycle
-  // finally block intentionally left empty
+        // Move file to failed/
+        renameSync(csvFilePath, `${failedDir}/${csvFile}`);
+      }
+    } else {
+      // Move file to failed/
+      renameSync(csvFilePath, `${failedDir}/${csvFile}`);
+    }
+  }
 }
 
 export { importPlans };
