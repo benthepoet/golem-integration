@@ -1,7 +1,5 @@
 import { createReadStream } from 'fs';
 import csv from 'csv-parser';
-import { open } from 'sqlite';
-import sqlite3 from 'sqlite3';
 import config from 'config';
 
 const CSV_KEYS = {
@@ -12,12 +10,11 @@ const CSV_KEYS = {
   GPU_CLASS_ID: 'value.5'
 }
 
-async function main() {
-  // Open the database
-  const db = await open({
-    filename: 'data/planner.db',
-    driver: sqlite3.Database
-  });
+/**
+ * Import plans into the database.
+ * @param {import('sqlite').Database} db - The opened sqlite database instance.
+ */
+async function importPlans(db) {
 
   // Create tables
   await db.exec(`
@@ -142,9 +139,10 @@ async function main() {
   } catch (err) {
     await db.run('ROLLBACK');
     console.error('Error inserting rows:', err);
-  } finally {
-    await db.close();
   }
+
+  // Do not close db here; let the caller manage db lifecycle
+  // finally block intentionally left empty
 }
 
-main();
+export { importPlans };
