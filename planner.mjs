@@ -117,33 +117,22 @@ async function main() {
       
       // Insert jobs based on duration constraints
       do {
-        // Check if the remaining duration is less than the maximum allowed
-        if (remainingDuration < maximumDuration ) {
-          // Only insert the remainder if it meets the minimum duration
-          if (remainingDuration >= minimumDuration) {
-            await insertJob.run(
-              result.lastID, 
-              row[CSV_KEYS.NODE_ID],
-              orderIndex++,
-              remainingDuration,
-              (remainingDuration / totalDuration) * totalInvoiceAmount
-            );
-          }
+        // Determine job duration
+        const jobDuration = Math.min(remainingDuration, maximumDuration);
 
-          remainingDuration -= remainingDuration;
-        }
-        // Else, insert a job with maximum duration
-        else {
+        // Only insert the job if it meets the minimum duration
+        if (jobDuration >= minimumDuration) {
           await insertJob.run(
             result.lastID, 
             row[CSV_KEYS.NODE_ID],
             orderIndex++,
-            maximumDuration,
-            (maximumDuration / totalDuration) * totalInvoiceAmount
+            jobDuration,
+            (jobDuration / totalDuration) * totalInvoiceAmount
           );
-
-          remainingDuration -= maximumDuration;
         }
+
+        // Decrease remaining duration
+        remainingDuration -= jobDuration;
       } while (remainingDuration > 0);
     }
     await insertPlan.finalize();
