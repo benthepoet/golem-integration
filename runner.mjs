@@ -1,4 +1,7 @@
 
+import config from 'config';
+import timespan from 'timespan-parser';
+
 /**
  * Process jobs that are due to start (start_at <= now and not yet started).
  * @param {import('sqlite').Database} db - The opened sqlite database instance.
@@ -10,15 +13,29 @@ export async function processDueJobs(db) {
   const timespanParser = timespan({ unit: 'ms' });
   const timeLag = timespanParser.parse(config.get('timeLag'));
   const adjustedNow = now - timeLag;
+  const minimumDuration = timespanParser.parse(config.get('minimumDuration'));
 
   // You may need to add a 'status' column to node_plan_job for production use
   // For now, we'll assume jobs are always eligible if their start time is due
   const jobs = await db.all(`
-    SELECT node_plan_job.*, node_plan.start_at
-    FROM node_plan_job
-    JOIN node_plan ON node_plan_job.node_plan_id = node_plan.id
-    WHERE node_plan.start_at <= ?
-  `, [adjustedNow]);
+    SELECT
+      np.node_id,
+      np.gpu_class_id,
+      npj.node_plan_id,
+      npj.order_index,
+      npj.start_at + npj.duration - $adjustedNow AS adjusted_duration,
+      (npj.start_at + npj.duration - $adjustedNow) / CAST(npj.duration AS REAL) * npj.invoice_amount AS adjusted_invoice_amount
+    FROM node_plan_job npj
+    JOIN node_plan np ON np.id = npj.node_plan_id
+    WHERE $adjustedNow > npj.start_at
+      AND $adjustedNow < npj.start_at + npj.duration
+      AND npj.start_at + npj.duration - $adjustedNow > $minimumDuration
+  `, {
+    $adjustedNow: adjustedNow,
+    $minimumDuration: minimumDuration,
+  });
+
+  console.log(`Processing ${jobs.length} due jobs at ${new Date(now).toISOString()}`);
 
   for (const job of jobs) {
     // Kick off your task here (e.g., spawn a process, call an API, etc.)
