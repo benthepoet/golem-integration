@@ -19,6 +19,9 @@ await importPlans(db);
 // Schedule periodic imports
 let plannerInterval = setInterval(() => importPlans(db), 1000 * 60 * 60); // every hour
 
+// Initial job processing on startup
+await processDueJobs(db);
+
 // Schedule job processing every minute
 let runnerInterval = setInterval(() => processDueJobs(db), 1000 * 60);
 

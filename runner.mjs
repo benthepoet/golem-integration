@@ -2,6 +2,8 @@
 import config from 'config';
 import timespan from 'timespan-parser';
 
+let runningJobs = new Set();
+
 /**
  * Process jobs that are due to start (start_at <= now and not yet started).
  * @param {import('sqlite').Database} db - The opened sqlite database instance.
@@ -38,10 +40,13 @@ export async function processDueJobs(db) {
   console.log(`Processing ${jobs.length} due jobs at ${new Date(now).toISOString()}`);
 
   for (const job of jobs) {
-    // Kick off your task here (e.g., spawn a process, call an API, etc.)
-    // For demonstration, just log the job
+    // Skip if already processing
+    if (runningJobs.has(job.node_plan_id + '-' + job.order_index)) {
+      console.log(`Job for node_id=${job.node_id} (plan_id=${job.node_plan_id}) is already in progress. Skipping.`);
+      continue;
+    }
+    // Kick off the job
+    runningJobs.add(job.node_plan_id + '-' + job.order_index);
     console.log(`Kicking off job for node_id=${job.node_id} (plan_id=${job.node_plan_id}) at ${new Date(now).toISOString()}`);
-    // Optionally, update job status here
-    // await db.run('UPDATE node_plan_job SET status = ? WHERE node_plan_id = ?', ['running', job.node_plan_id]);
   }
 }
