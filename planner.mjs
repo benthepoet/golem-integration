@@ -1,4 +1,5 @@
-import { createReadStream, readdirSync, renameSync, existsSync, mkdirSync } from 'fs';
+import { createReadStream } from 'fs';
+import { promises as fsp } from 'fs';
 import csv from 'csv-parser';
 import config from 'config';
 import timespan from 'timespan-parser';
@@ -20,21 +21,29 @@ async function importPlans(db) {
 
   // Ensure tables exist
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS csv_import_file (
+      id INTEGER PRIMARY KEY,
+      file_name TEXT UNIQUE
+    )
+  `);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS node_plan (
       id INTEGER PRIMARY KEY,
       node_id TEXT,
-      csv_file TEXT,
+      csv_import_file_id INTEGER,
       start_at INTEGER,
       stop_at INTEGER,
-      gpu_class_id TEXT
+      gpu_class_id TEXT,
+      FOREIGN KEY (csv_import_file_id) REFERENCES csv_import_file(id)
     )
   `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS node_plan_job (
       node_plan_id INTEGER,
-      node_id TEXT,
       order_index INTEGER,
+      start_at INTEGER,
       duration INTEGER,
       invoice_amount REAL,
       FOREIGN KEY (node_plan_id) REFERENCES node_plan(id)
@@ -52,22 +61,16 @@ async function importPlans(db) {
   const failedDir = 'data/failed';
 
   // Ensure pending directory exists
-  if (!existsSync(pendingDir)) {
-    mkdirSync(pendingDir, { recursive: true });
-  }
+  await fsp.mkdir(pendingDir, { recursive: true });
 
   // Ensure imported directory exists
-  if (!existsSync(importedDir)) {
-    mkdirSync(importedDir, { recursive: true });
-  }
+  await fsp.mkdir(importedDir, { recursive: true });
 
   // Ensure failed directory exists
-  if (!existsSync(failedDir)) {
-    mkdirSync(failedDir, { recursive: true });
-  }
+  await fsp.mkdir(failedDir, { recursive: true });
 
   // Read CSV files
-  const files = readdirSync(pendingDir).filter(f => f.endsWith('.csv'));
+  const files = (await fsp.readdir(pendingDir)).filter(f => f.endsWith('.csv'));
   console.log(`Found ${files.length} CSV files to process.`);
 
   // Process each CSV file
@@ -102,11 +105,18 @@ async function importPlans(db) {
       await db.run('BEGIN TRANSACTION');
 
       try {
+        // Insert CSV file record
+        const insertCsvFile = await db.prepare(`
+          INSERT INTO csv_import_file (file_name) VALUES (?)
+        `);
+        const csvFileResult = await insertCsvFile.run(csvFile);
+        const csvFileId = csvFileResult.lastID;
+
         // Prepare plan insert statement
         const insertPlan = await db.prepare(`
           INSERT INTO node_plan (
             node_id,
-            csv_file,
+            csv_import_file_id,
             start_at,
             stop_at,
             gpu_class_id
@@ -123,8 +133,8 @@ async function importPlans(db) {
         const insertJob = await db.prepare(`
           INSERT INTO node_plan_job (
             node_plan_id,
-            node_id,
             order_index,
+            start_at,
             duration,
             invoice_amount
           ) VALUES (
@@ -141,7 +151,7 @@ async function importPlans(db) {
           // Insert plan
           const result = await insertPlan.run(
             row[CSV_KEYS.NODE_ID],
-            csvFilePath,
+            csvFileId,
             row[CSV_KEYS.START_AT],
             row[CSV_KEYS.STOP_AT],
             row[CSV_KEYS.GPU_CLASS_ID]
@@ -152,6 +162,7 @@ async function importPlans(db) {
           let totalDuration = row[CSV_KEYS.STOP_AT] - row[CSV_KEYS.START_AT];
           let remainingDuration = totalDuration;
           let orderIndex = 0;
+          let jobStartAt = parseInt(row[CSV_KEYS.START_AT]);
 
           // Split into jobs based on maximumDuration
           do {
@@ -162,8 +173,8 @@ async function importPlans(db) {
             if (jobDuration >= minimumDuration) {
               await insertJob.run(
                 result.lastID,
-                row[CSV_KEYS.NODE_ID],
                 orderIndex++,
+                jobStartAt,
                 jobDuration,
                 (jobDuration / totalDuration) * totalInvoiceAmount
               );
@@ -171,27 +182,31 @@ async function importPlans(db) {
 
             // Decrease remaining duration
             remainingDuration -= jobDuration;
+
+            // Update job start time
+            jobStartAt += jobDuration;
           } while (remainingDuration > 0);
         }
 
         // Finalize statements and commit transaction
+        await insertCsvFile.finalize();
         await insertPlan.finalize();
         await insertJob.finalize();
         await db.run('COMMIT');
         console.log(`${csvFile} successfully processed and rows inserted efficiently`);
 
         // Move file to imported/
-        renameSync(csvFilePath, `${importedDir}/${csvFile}`);
+        await fsp.rename(csvFilePath, `${importedDir}/${csvFile}`);
       } catch (err) {
         await db.run('ROLLBACK');
         console.error(`Error importing ${csvFile}:`, err);
 
         // Move file to failed/
-        renameSync(csvFilePath, `${failedDir}/${csvFile}`);
+        await fsp.rename(csvFilePath, `${failedDir}/${csvFile}`);
       }
     } else {
       // Move file to failed/
-      renameSync(csvFilePath, `${failedDir}/${csvFile}`);
+      await fsp.rename(csvFilePath, `${failedDir}/${csvFile}`);
     }
   }
 }
