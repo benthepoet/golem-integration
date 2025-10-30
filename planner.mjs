@@ -3,6 +3,7 @@ import { promises as fsp } from 'fs';
 import csv from 'csv-parser';
 import config from 'config';
 import timespan from 'timespan-parser';
+import db from './db.mjs';
 
 // CSV column keys
 const CSV_KEYS = {
@@ -15,9 +16,8 @@ const CSV_KEYS = {
 
 /**
  * Import plans into the database.
- * @param {import('sqlite').Database} db - The opened sqlite database instance.
  */
-async function importPlans(db) {
+async function importPlans() {
 
   // Ensure tables exist
   await db.exec(`

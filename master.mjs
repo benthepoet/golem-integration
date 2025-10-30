@@ -1,29 +1,19 @@
 
 import { importPlans } from './planner.mjs';
 import { processDueJobs } from './runner.mjs';
-import { open } from 'sqlite';
-import sqlite3 from 'sqlite3';
-
-// Open the database once and share it
-const db = await open({
-  filename: 'data/planner.db',
-  driver: sqlite3.Database
-});
-
-// Enable WAL mode for better concurrency
-await db.exec('PRAGMA journal_mode = WAL;');
+import db from './db.mjs';
 
 // Initial import on startup
-await importPlans(db);
+await importPlans();
 
 // Schedule periodic imports
-let plannerInterval = setInterval(() => importPlans(db), 1000 * 60 * 60); // every hour
+let plannerInterval = setInterval(importPlans, 1000 * 60 * 60); // every hour
 
 // Initial job processing on startup
-await processDueJobs(db);
+await processDueJobs();
 
 // Schedule job processing every minute
-let runnerInterval = setInterval(() => processDueJobs(db), 1000 * 60);
+let runnerInterval = setInterval(processDueJobs, 1000 * 60);
 
 // Handle graceful shutdown
 

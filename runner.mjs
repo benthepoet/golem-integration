@@ -1,14 +1,14 @@
 
 import config from 'config';
 import timespan from 'timespan-parser';
+import db from './db.mjs';
 
 let runningJobs = new Set();
 
 /**
  * Process jobs that are due to start (start_at <= now and not yet started).
- * @param {import('sqlite').Database} db - The opened sqlite database instance.
  */
-export async function processDueJobs(db) {
+export async function processDueJobs() {
   const now = Date.now();
 
   // Subtract time lag from config
