@@ -3,12 +3,13 @@ import config from 'config';
 import timespan from 'timespan-parser';
 import db from './db.mjs';
 
-let runningJobs = new Set();
+// Track active plans to prevent overlapping executions
+let activePlans = new Map();
 
 /**
- * Process jobs that are due to start (start_at <= now and not yet started).
+ * Process plans that are due to start.
  */
-export async function processDueJobs() {
+export async function processPlans() {
   const now = Date.now();
 
   // Subtract time lag from config
@@ -17,8 +18,6 @@ export async function processDueJobs() {
   const adjustedNow = now - timeLag;
   const minimumDuration = timespanParser.parse(config.get('minimumDuration'));
 
-  // You may need to add a 'status' column to node_plan_job for production use
-  // For now, we'll assume jobs are always eligible if their start time is due
   const jobs = await db.all(`
     SELECT
       np.node_id,
@@ -28,7 +27,7 @@ export async function processDueJobs() {
       npj.start_at + npj.duration - $adjustedNow AS adjusted_duration,
       (npj.start_at + npj.duration - $adjustedNow) / CAST(npj.duration AS REAL) * npj.invoice_amount AS adjusted_invoice_amount
     FROM node_plan_job npj
-    JOIN node_plan np ON np.id = npj.node_plan_id
+    JOIN node_plan np ON np.id = npj.node_plan_id AND np.status != 'completed'
     WHERE $adjustedNow > npj.start_at
       AND $adjustedNow < npj.start_at + npj.duration
       AND npj.start_at + npj.duration - $adjustedNow > $minimumDuration
@@ -41,12 +40,17 @@ export async function processDueJobs() {
 
   for (const job of jobs) {
     // Skip if already processing
-    if (runningJobs.has(job.node_plan_id + '-' + job.order_index)) {
-      console.log(`Job for node_id=${job.node_id} (plan_id=${job.node_plan_id}) is already in progress. Skipping.`);
+    if (activePlans.has(job.node_id)) {
+      console.log(`Plan for node_id=${job.node_id} (plan_id=${job.node_plan_id}) is already active. Skipping.`);
       continue;
     }
-    // Kick off the job
-    runningJobs.add(job.node_plan_id + '-' + job.order_index);
-    console.log(`Kicking off job for node_id=${job.node_id} (plan_id=${job.node_plan_id}) at ${new Date(now).toISOString()}`);
+
+    // Kick off the plan
+    console.log(`Activating plan for node_id=${job.node_id} (plan_id=${job.node_plan_id}) at ${new Date(now).toISOString()}`);
+    const planPromise = executePlan(job)
+      .finally(() => {
+        activePlans.delete(job.node_id);
+      });
+    activePlans.set(job.node_id, planPromise);
   }
 }

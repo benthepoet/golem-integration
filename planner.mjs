@@ -32,6 +32,7 @@ async function importPlans() {
       id INTEGER PRIMARY KEY,
       node_id TEXT,
       csv_import_file_id INTEGER,
+      status TEXT DEFAULT 'pending',
       start_at INTEGER,
       stop_at INTEGER,
       gpu_class_id TEXT,

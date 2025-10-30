@@ -1,6 +1,6 @@
 
 import { importPlans } from './planner.mjs';
-import { processDueJobs } from './runner.mjs';
+import { processPlans } from './monitor.mjs';
 import db from './db.mjs';
 
 // Initial import on startup
@@ -9,11 +9,11 @@ await importPlans();
 // Schedule periodic imports
 let plannerInterval = setInterval(importPlans, 1000 * 60 * 60); // every hour
 
-// Initial job processing on startup
-await processDueJobs();
+// Initial plan processing on startup
+await processPlans();
 
-// Schedule job processing every minute
-let runnerInterval = setInterval(processDueJobs, 1000 * 60);
+// Schedule plan processing every minute
+let runnerInterval = setInterval(processPlans, 1000 * 60);
 
 // Handle graceful shutdown
 
