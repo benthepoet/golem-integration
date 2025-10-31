@@ -2,6 +2,7 @@
 import { importPlans } from './planner.mjs';
 import { processPlans } from './monitor.mjs';
 import db from './db.mjs';
+import glm from './glm.mjs';
 
 // Handle graceful shutdown
 process.on('SIGINT', () => shutdownHandler('SIGINT'));
@@ -13,6 +14,9 @@ await importPlans();
 // Schedule periodic imports
 let plannerInterval = setInterval(importPlans, 1000 * 60 * 60); // every hour
 
+// Connect to Golem Network
+await glm.connect();
+
 // Initial plan processing on startup
 await processPlans();
 
@@ -20,10 +24,17 @@ await processPlans();
 let runnerInterval = setInterval(processPlans, 1000 * 60);
 
 function shutdownHandler(signal) {
+  // Clear intervals
   clearInterval(plannerInterval);
   clearInterval(runnerInterval);
-  db.close().then(() => {
-    console.log(`Received ${signal}. Cleared intervals, closed DB, and exiting.`);
-    process.exit(0);
-  });
+
+  // Disconnect from Golem Network
+  glm.disconnect();
+
+  // Close DB connection
+  db.close()
+    .then(() => {
+      console.log(`Received ${signal}. Cleared intervals, closed DB, and exiting.`);
+      process.exit(0);
+    });
 }

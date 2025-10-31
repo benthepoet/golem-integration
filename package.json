@@ -9,6 +9,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@golem-sdk/golem-js": "^3.9.0",
+    "@golem-sdk/pino-logger": "^1.1.0",
     "config": "^4.1.1",
     "csv-parser": "^3.2.0",
     "sqlite": "^5.1.1",

@@ -1,5 +1,7 @@
 {
     "minimumDuration": "5min",
     "maximumDuration": "180min",
-    "timeLag": "24hr"
+    "timeLag": "24hr",
+    "apiKey": "eb9d0e5f5f144a7a8267c715af5d3300",
+    "paymentNetwork": "amoy"
 }
