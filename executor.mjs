@@ -13,7 +13,10 @@ export async function executePlan(initialJob) {
   do {
     // Do the work for the current job
     console.log(`Executing job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
+
+    // TODO: Integrate with Golem Network to run the job
     await new Promise(resolve => setTimeout(resolve, currentJob.adjusted_duration)); // Simulate async work
+
     console.log(`Finished job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
 
     // Grab the next job from the plan, if any
