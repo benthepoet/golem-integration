@@ -3,6 +3,10 @@ import { importPlans } from './planner.mjs';
 import { processPlans } from './monitor.mjs';
 import db from './db.mjs';
 
+// Handle graceful shutdown
+process.on('SIGINT', () => shutdownHandler('SIGINT'));
+process.on('SIGTERM', () => shutdownHandler('SIGTERM'));
+
 // Initial import on startup
 await importPlans();
 
@@ -15,8 +19,6 @@ await processPlans();
 // Schedule plan processing every minute
 let runnerInterval = setInterval(processPlans, 1000 * 60);
 
-// Handle graceful shutdown
-
 function shutdownHandler(signal) {
   clearInterval(plannerInterval);
   clearInterval(runnerInterval);
@@ -25,6 +27,3 @@ function shutdownHandler(signal) {
     process.exit(0);
   });
 }
-
-process.on('SIGINT', () => shutdownHandler('SIGINT'));
-process.on('SIGTERM', () => shutdownHandler('SIGTERM'));
