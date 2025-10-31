@@ -2,7 +2,7 @@
 import { importPlans } from './planner.mjs';
 import { processPlans } from './monitor.mjs';
 import db from './db.mjs';
-import glm from './glm.mjs';
+import { glm, shutdown } from './glm.mjs';
 
 // Handle graceful shutdown
 process.on('SIGINT', () => shutdownHandler('SIGINT'));
@@ -27,6 +27,9 @@ function shutdownHandler(signal) {
   // Clear intervals
   clearInterval(plannerInterval);
   clearInterval(runnerInterval);
+
+  // Abort any ongoing Golem operations
+  shutdown.abort();
 
   // Disconnect from Golem Network
   glm.disconnect();

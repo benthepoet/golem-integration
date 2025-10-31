@@ -1,4 +1,5 @@
 import db from './db.mjs';
+import { glm, shutdown } from './glm.mjs';
 
 /**
  * Execute a plan with an initial job.
@@ -15,7 +16,54 @@ export async function executePlan(initialJob) {
     console.log(`Executing job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
 
     // TODO: Integrate with Golem Network to run the job
-    await new Promise(resolve => setTimeout(resolve, currentJob.adjusted_duration)); // Simulate async work
+
+
+    try {
+      const rental = await glm.oneOf({
+        order: {
+          demand: {
+            workload: {
+              runtime: {
+                name: "salad",
+              },
+              imageTag: "golem/alpine:latest",
+            },
+          },
+          market: {
+            rentHours: currentJob.adjusted_duration / (1000 * 60 * 60), // convert ms to hours
+            pricing: {
+              model: "linear",
+              maxStartPrice: 0.0,
+              maxCpuPerHourPrice: 1.0,
+              maxEnvPerHourPrice: 0.0,
+            },
+            // TODO: Apply whitelist filter
+          },
+        },
+        // Pass abort signal to the rental
+        signalOrTimeout: shutdown.signal,
+      });
+
+      const exe = await rental.getExeUnit();
+      const remoteProcess = await exe.runAndStream(
+        currentJob.node_id,
+        [JSON.stringify({ duration: currentJob.duration / 1000 })], // Run for the job's duration
+        {
+          // Pass abort signal to the command execution
+          signalOrTimeout: shutdown.signal
+        }
+      );
+
+      remoteProcess.stdout
+        .subscribe((data) => console.log(`${currentJob.node_id} stdout>`, data));
+
+      remoteProcess.stderr
+        .subscribe((data) => console.error(`${currentJob.node_id} stderr>`, data));
+
+      await remoteProcess.waitForExit(currentJob.duration * 1.05 / 1000); // wait with a small buffer
+    } finally {
+      await rental.stopAndFinalize();
+    }
 
     console.log(`Finished job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
 

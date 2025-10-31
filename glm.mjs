@@ -1,4 +1,4 @@
-import { GolemNetwork } from "@golem-sdk/golem-js";
+import { AbortController, GolemNetwork } from "@golem-sdk/golem-js";
 import { pinoPrettyLogger } from "@golem-sdk/pino-logger";
 import config from "config";
 
@@ -13,4 +13,7 @@ const glm = new GolemNetwork({
   }
 });
 
-export default glm;
+// Create AbortController for cancellation
+const shutdown = new AbortController();
+
+export { glm, shutdown };
