@@ -11,8 +11,6 @@ export async function executePlan(initialJob) {
   let currentJob = initialJob;
 
   do {
-
-
     // Do the work for the current job
     console.log(`Executing job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
     await new Promise(resolve => setTimeout(resolve, currentJob.adjusted_duration)); // Simulate async work
