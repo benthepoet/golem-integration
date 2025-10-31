@@ -5,11 +5,13 @@ import db from './db.mjs';
  * @param {Object} initialJob - The initial job to execute.
  */
 export async function executePlan(initialJob) {
+  // TODO: Allocate resources as needed
+
   // Simulate job execution
   let currentJob = initialJob;
 
   do {
-    // TODO: Allocate resources as needed
+
 
     // Do the work for the current job
     console.log(`Executing job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
