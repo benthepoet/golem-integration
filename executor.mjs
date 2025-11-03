@@ -16,8 +16,6 @@ export async function executePlan(initialJob) {
     console.log(`Executing job for node_id=${currentJob.node_id} (plan_id=${currentJob.node_plan_id})`);
 
     // TODO: Integrate with Golem Network to run the job
-
-
     try {
       const rental = await glm.oneOf({
         order: {
