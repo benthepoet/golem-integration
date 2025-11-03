@@ -1,4 +1,4 @@
-import { AbortController, GolemNetwork } from "@golem-sdk/golem-js";
+import { GolemNetwork } from "@golem-sdk/golem-js";
 import { pinoPrettyLogger } from "@golem-sdk/pino-logger";
 import config from "config";
 

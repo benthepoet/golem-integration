@@ -1,9 +1,10 @@
 import { open } from 'sqlite';
 import sqlite3 from 'sqlite3';
+import config from 'config';
 
 // Open the database once and share it
 const db = await open({
-  filename: 'data/planner.db',
+  filename: config.get('databaseFilePath'),
   driver: sqlite3.Database
 });
 

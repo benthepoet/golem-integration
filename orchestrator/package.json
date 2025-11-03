@@ -1,0 +1,19 @@
+{
+  "name": "golem-integration-orchestrator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@golem-sdk/golem-js": "^3.9.0",
+    "@golem-sdk/pino-logger": "^1.1.0",
+    "config": "^4.1.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "timespan-parser": "^1.2.0"
+  }
+}

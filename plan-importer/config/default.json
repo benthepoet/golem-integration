@@ -1,0 +1,5 @@
+{
+  "databaseFilePath": "data/planner.db",
+  "minimumDuration": "5min",
+  "maximumDuration": "180min"
+}
